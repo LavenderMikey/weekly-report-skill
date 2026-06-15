@@ -1,0 +1,246 @@
+---
+name: weekly
+description: >-
+  Generates a new weekly status report (周报) that closely imitates the user's
+  own past reports — same section structure, tone, level of detail, and visual
+  formatting (font, size, indentation, heading styles) — by reading one or more
+  historical reports as a template, then summarizing the user's work and the
+  articles they read this week into the matching format. Use this skill whenever
+  the user wants to write, draft, generate, or fill in a 周报 / weekly report /
+  weekly summary / 工作周报, especially when they provide past reports to copy the
+  style from, mention summarizing this week's work, or want this week's reading
+  ("看的文章/论文/资料") folded into a learning section. Trigger on phrases like
+  "帮我写周报", "根据以前的周报生成这周的", "把这周的工作整理成周报", "周报", "weekly report",
+  even if they don't explicitly say the word "skill".
+---
+
+# Weekly Report Generator (周报生成)
+
+Produce a new weekly report that looks and reads like the user wrote it
+themselves. The whole point is **fidelity to their existing reports**: a manager
+should not be able to tell this one was generated. That means matching two
+things — the *content structure/voice* and the *visual formatting* — and never
+inventing accomplishments that aren't supported by the materials the user gives.
+
+## The workflow at a glance
+
+1. Get and study the historical report(s) → learn structure + formatting.
+2. Ask the user for this week's materials (work + articles).
+3. Summarize those materials faithfully into the learned structure.
+4. Generate the new report in the same file format, preserving formatting.
+5. Hand back the file and a short summary of what you put in each section.
+
+Work through these in order. Don't skip step 1 — everything downstream depends
+on understanding what the user's reports actually look like.
+
+## Step 1 — Study the historical report(s)
+
+The user will provide one or more past reports. They may be `.docx`, `.pdf`, or
+plain text/markdown. Your goal is to extract a **template** in your head (and
+literally, when it's a `.docx`):
+
+- **Section structure**: What are the recurring headings? (e.g. 本周工作 /
+  本周完成 / 下周计划 / 学习与思考). In what order? Is work grouped by project, by
+  day, or as a flat bullet list?
+- **Granularity & voice**: Long prose or terse bullets? Past tense, results-
+  oriented? Quantified ("完成 3 个模块", "测试覆盖率提升至 85%") or qualitative? First
+  person or impersonal? Note this — it's what makes the report read like theirs.
+- **Visual formatting** (this matters because the user explicitly cares about it
+  for an upper-management audience): font family, font size, bold/heading
+  styles, indentation, bullet markers, numbering, and — easy to overlook —
+  **line spacing and paragraph spacing (space before/after) and alignment**.
+  These are usually set on the `Normal` style or document defaults rather than
+  per paragraph, so `inspect_docx.py` reports them in a dedicated "Spacing
+  defaults" section. Don't skip it: spacing is a big part of why a report
+  "looks like mine," and it's the easiest thing to get subtly wrong.
+
+### Reading the different formats
+
+- **`.docx`** — Use the helper script, which dumps structure and formatting so
+  you don't have to eyeball it:
+  ```bash
+  python "<skill-dir>/scripts/inspect_docx.py" "path/to/old_report.docx"
+  ```
+  It prints, per paragraph: the style name, text preview, font name, size,
+  bold/italic, alignment, and indentation — plus the document's default font.
+  This is your formatting fingerprint. If the script reports a missing
+  dependency, install it first: `pip install python-docx`.
+- **`.pdf`** — Read it with the Read tool (it handles PDFs natively). You'll get
+  the content and rough layout but *not* exact font metrics; infer formatting
+  from visual structure and ask the user if a specific detail matters.
+- **plain text / markdown** — Read directly; structure is whatever the text
+  shows.
+
+If the user gives **several** historical reports, treat the **most recent** one
+as the authoritative template for formatting, and use the others to confirm
+which sections are stable vs. occasional.
+
+## Step 2 — Ask for this week's materials
+
+Once you understand the template, ask the user for this week's inputs. They told
+you up front these come as **both files and pasted text**, so invite both:
+
+> 我已经看过你的历史周报，结构和格式都记下来了。现在把这周的材料发我吧：
+> 1. **本周工作**：做了哪些事（文件、文档、或直接贴要点都行）
+> 2. **看过的文章/资料**：链接、PDF、或你自己记的笔记要点
+
+Read every file they provide (`.docx`/`.pdf` via the methods above; code or docs
+with the Read tool). Don't proceed to writing until you have enough to fill the
+sections that the template says are required. If something's thin (e.g. they
+gave work but no articles, and the template has a learning section), ask rather
+than padding it with invented content.
+
+## Step 3 — Summarize faithfully
+
+Turn the raw materials into report-ready content, matching the granularity you
+observed in Step 1.
+
+- **Work section**: Group the way their template groups (by project/by theme/
+  flat). Lead with outcomes and impact, since the audience is the user's
+  manager — but only claims supported by the materials. If the user gave rough
+  notes, elevate them into the report's voice; don't downgrade the report to
+  their notes' casualness.
+- **Learning section** (articles read): This is a **dedicated section** — the
+  user wants their reading called out separately, not blended into the work
+  items. For each article/paper, give a one-to-three line summary: what it's
+  about and the takeaway or how it connects to their work. Keep it tighter than
+  the work section unless their template does otherwise.
+- **Plan / next week**: If the template has one, draft a reasonable plan from
+  in-progress items and obvious follow-ups, then flag to the user that they
+  should confirm it.
+
+The golden rule: **never fabricate accomplishments, metrics, or articles.** A
+report that overstates is worse than one that's modestly accurate, because the
+user has to stand behind it. When in doubt, summarize what's there and note the
+gap.
+
+## Step 4 — Generate in the same format
+
+### When the source is `.docx` (preserve formatting)
+
+**Strongly prefer cloning the template over rebuilding from scratch.** A real
+report carries a lot of formatting you can't see from the text: automatic
+numbering (一、二、三 / 1、2、3 stored in `numbering.xml`, invisible in the text),
+line/paragraph spacing and alignment set on the `Normal` style, page margins,
+fonts. Every time you rebuild fresh you risk silently dropping one of these —
+in practice numbering and spacing get lost. Cloning inherits all of it for free.
+
+**Clone-and-rebuild-from-prototypes (the reliable recipe):**
+
+1. `shutil.copy` the most recent report to the output path and open it with
+   `python-docx`. This keeps `styles.xml`, `numbering.xml`, section/page setup,
+   fonts and spacing exactly as the user has them.
+2. From the most recent week's section, **harvest one "prototype" paragraph of
+   each kind** by deep-copying its `<w:p>` element — e.g. a top-level numbered
+   heading, a subsection numbered heading, a plain body paragraph, a plan-list
+   item, the title line. Each prototype carries its own `pPr` (including the
+   `numPr` that drives numbering) and run `rPr`.
+3. Remove all existing `<w:p>` from the body, but keep the trailing
+   `<w:sectPr>` (page setup). Insert new paragraphs *before* it
+   (`sectPr.addprevious(el)`).
+4. Re-emit the report by cloning the right prototype for each line and swapping
+   in this week's text (keep the prototype's first run so its formatting and the
+   paragraph's `numPr` survive; drop the extra runs/images).
+
+Because cloned headings reuse the same `numId`, Word renumbers them
+automatically: reuse the top-level `numId` for every section (综述 + each
+paper → 一、二、三), one subsection `numId` per paper (its subsections restart at
+1、2、3…), and the plan-list `numId` for next-week items. Body paragraphs and
+equation lines should carry no numbering (often `numId=0`, which means "no
+number") — clone the body prototype for those. `inspect_docx.py` prints
+`num(id=…,lvl=…)` per paragraph and a numbering summary so you can see exactly
+which prototype maps to which `numId`. `scripts/docx_report.py` bundles the
+reusable building blocks for this recipe: `wipe_body`, `emit`,
+`clone_with_text`, `clone_with_omath`, `add_figure_table`, `add_centered_image`
+and `strip_unused_media`.
+
+**If you must rebuild fresh** (no usable template, or the user wants a brand-new
+layout): set the document default font including the East Asian font
+(`w:eastAsia`, which python-docx omits), and beware that python-docx's default
+template gives `Normal` loose spacing (1.15 line + ~8–10pt after). Most Chinese
+reports are tight — override to match what `inspect_docx.py` reports:
+`nf = doc.styles["Normal"].paragraph_format; nf.line_spacing = 1.0;
+nf.space_before = Pt(0); nf.space_after = Pt(0)`. Reproducing automatic
+numbering from scratch is painful (you must inject `numbering.xml`), which is
+exactly why cloning is preferred.
+
+Chinese-font gotcha: in `python-docx`, setting `run.font.name` only sets the
+Latin font. To make Chinese text use the intended font you must also set the
+East Asian font on the run's rPr. The helper notes whether the template uses a
+distinct East Asian font; if so, apply it. See `references/docx_formatting.md`
+for the exact snippet and other formatting recipes.
+
+Formulas (research/lab reports): if the report contains math, render it as
+**native, editable Word equations**, not as LaTeX source text — the user should
+not have to convert anything by hand. Use `scripts/docx_math.py`'s
+`latex_to_omath(...)`, which turns LaTeX into Word OMML via Pandoc, then append
+each returned element into a paragraph (`paragraph._p.append(element)`). This
+keeps your formatting intact while the equations render and edit like normal
+Word equations. It needs Pandoc on PATH; if Pandoc isn't available, leave the
+LaTeX as text and tell the user.
+
+Figures from source papers: when the source materials are PDFs (e.g. papers the
+user read) and the report should show their figures, you can pull the figures
+out automatically instead of leaving placeholders. Use
+`scripts/extract_pdf_figure.py` (`extract_figure(pdf, page, caption, out_png)`),
+which crops a figure by anchoring on its caption text. **Always open each
+produced PNG to verify the crop** — caption-anchored cropping occasionally clips
+too much/little, and viewing it is the fast way to catch that before inserting.
+Then insert each figure with `docx_report.add_figure_table(...)` (a centered
+bordered table: image row + caption row) — or, if the template places figures as
+plain centered images without a border, `docx_report.add_centered_image(...)`.
+Match whichever the historical report uses. If you can't get the PDFs, fall back
+to a `【此处插入图：…】` placeholder and ask the user to paste the screenshot.
+
+**Place figures where the template places them, not bunched at the end.** Check
+the historical report's figure positions (`inspect_docx.py` marks paragraphs
+containing images): typically each figure sits inline right after the subsection
+that discusses it — an architecture/framework diagram under the
+"整体框架/方法" subsection, a results/comparison figure under "实验结果" — and
+figures are numbered by order of appearance (图1、图2…). Match that flow so the
+report reads like the user's, rather than dropping every figure at the section's
+tail.
+
+Cloning gotcha when inserting figures: the cloned template's body may contain
+**tables and inline images from prior weeks**. Removing paragraphs doesn't
+remove `<w:tbl>` elements, and old images linger in `word/media/` and bloat the
+file. When wiping the body, remove *all* block children except the trailing
+`<w:sectPr>` (use `docx_report.wipe_body`), and after saving call
+`docx_report.strip_unused_media(path)` to drop images not referenced by
+`document.xml` — otherwise the report balloons to the template's full size
+(often 10+ MB) and carries stale content.
+
+Save the result next to the inputs (or where the user asks) with a clear name
+like `周报_2026-06-15.docx`.
+
+### When the source is PDF or plain text
+
+Match the structure and voice; produce the output in the format the user wants
+(ask if unclear — often a `.docx` or markdown). You can't perfectly clone PDF
+typography, so aim for clean, consistent formatting that mirrors the layout.
+
+## Step 5 — Hand it back
+
+Give the user the file path and a brief rundown: which sections you filled, what
+you summarized into each, and anything you want them to verify (especially the
+next-week plan and any place the materials were thin). Make it easy for them to
+spot-check before they send it on.
+
+## Resources
+
+- `scripts/inspect_docx.py` — dumps a `.docx`'s per-paragraph structure and
+  formatting (style, font, size, bold, alignment, indentation) + document
+  defaults. Run it first on any `.docx` historical report.
+- `scripts/docx_report.py` — report-agnostic building blocks for the
+  clone-and-rebuild recipe: `wipe_body`, `emit`, `clone_with_text`,
+  `clone_with_omath`, `add_figure_table`, `add_centered_image`,
+  `strip_unused_media`.
+- `scripts/docx_math.py` — `latex_to_omath(latex_list)` converts LaTeX into
+  native Word equations (OMML) via Pandoc, for reports that contain formulas.
+- `scripts/extract_pdf_figure.py` — `extract_figure(pdf, page, caption, out_png)`
+  crops a figure out of a source PDF by anchoring on its caption (PyMuPDF).
+  Verify each crop by opening the PNG before inserting it.
+- `references/docx_formatting.md` — python-docx recipes: setting Chinese
+  (East Asian) fonts, indentation, copying a template, matching styles, and
+  inserting equations. Read it when generating a `.docx` so the output
+  formatting actually matches.
