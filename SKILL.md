@@ -22,18 +22,41 @@ should not be able to tell this one was generated. That means matching two
 things — the *content structure/voice* and the *visual formatting* — and never
 inventing accomplishments that aren't supported by the materials the user gives.
 
-## The workflow at a glance
+## Two paths — pick the short one when you can
 
-1. Get and study the historical report(s) → learn structure + formatting.
-2. Ask the user for this week's materials (work + articles).
-3. Summarize those materials faithfully into the learned structure.
-4. Generate the new report in the same file format, preserving formatting.
-5. Hand back the file and a short summary of what you put in each section.
+Most complaints about this skill are "太长了，总在转格式." Usually that's because
+the full pipeline (inspect → clone → LaTeX→Word → PDF→图) ran when half of it
+wasn't needed. So first decide which path you're on:
 
-Work through these in order. Don't skip step 1 — everything downstream depends
-on understanding what the user's reports actually look like.
+- **🟢 Fast path (the common case — repeat week).** The user already has a report
+  in the exact target format — almost always **last week's `.docx`, especially
+  one this skill generated**. The format is already perfect *inside that file*,
+  so **don't re-inspect or re-learn it**: just clone it, swap in this week's
+  content, save. Skip Step 1's formatting dump entirely. This is 80% of runs and
+  should feel near one-shot.
+- **🔵 Full path (first time, or no prior report in the right format).** Study one
+  historical report once to learn structure + formatting (Step 1), then clone.
 
-## Step 1 — Study the historical report(s)
+**The heavy converters are opt-in, not default.** LaTeX→Word equations (Pandoc)
+and PDF→图 cropping (PyMuPDF) only run **when the report actually has math / the
+user actually wants paper figures in it.** A plain work周报 touches neither —
+don't invoke them reflexively. That alone removes most of the "总在转格式" feeling.
+
+### Steps
+
+1. *(Full path only)* Study a historical report → learn structure + formatting.
+2. Ask for this week's materials (work + articles) — one message.
+3. Summarize them faithfully into the structure.
+4. Emit in the same format — **clone** the prior report; add formulas/figures
+   only if the content needs them.
+5. Hand back the file + a short per-section rundown.
+
+## Step 1 — Study the historical report(s) *(full path only — skip on repeat weeks)*
+
+**Skip this whole step on the fast path.** If a prior report in the right format
+exists (e.g. last week's `.docx`), you don't need to dump and study its
+formatting — cloning in Step 4 inherits all of it. Only do Step 1 the **first**
+time you see a user's template, or when the cloned output looks off.
 
 The user will provide one or more past reports. They may be `.docx`, `.pdf`, or
 plain text/markdown. Your goal is to extract a **template** in your head (and
@@ -77,12 +100,13 @@ which sections are stable vs. occasional.
 
 ## Step 2 — Ask for this week's materials
 
-Once you understand the template, ask the user for this week's inputs. They told
-you up front these come as **both files and pasted text**, so invite both:
+Ask for this week's inputs in **one** message (don't pre-announce that you
+studied the template — just ask). Inputs come as both files and pasted text, so
+invite both:
 
-> 我已经看过你的历史周报，结构和格式都记下来了。现在把这周的材料发我吧：
+> 把这周的材料发我吧（沿用上周的格式）：
 > 1. **本周工作**：做了哪些事（文件、文档、或直接贴要点都行）
-> 2. **看过的文章/资料**：链接、PDF、或你自己记的笔记要点
+> 2. **看过的文章/资料**：链接、PDF、或你自己记的笔记要点（没有就说没有）
 
 Read every file they provide (`.docx`/`.pdf` via the methods above; code or docs
 with the Read tool). Don't proceed to writing until you have enough to fill the
@@ -195,7 +219,8 @@ East Asian font on the run's rPr. The helper notes whether the template uses a
 distinct East Asian font; if so, apply it. See `references/docx_formatting.md`
 for the exact snippet and other formatting recipes.
 
-Formulas (research/lab reports): if the report contains math, render it as
+Formulas — **only if the report actually contains math** (skip entirely for a
+plain work周报; don't run Pandoc for nothing). When there is math, render it as
 **native, editable Word equations**, not as LaTeX source text — the user should
 not have to convert anything by hand. Use `scripts/docx_math.py`'s
 `latex_to_omath(...)`, which turns LaTeX into Word OMML via Pandoc, then append
@@ -204,9 +229,10 @@ keeps your formatting intact while the equations render and edit like normal
 Word equations. It needs Pandoc on PATH; if Pandoc isn't available, leave the
 LaTeX as text and tell the user.
 
-Figures from source papers: when the source materials are PDFs (e.g. papers the
-user read) and the report should show their figures, you can pull the figures
-out automatically instead of leaving placeholders. Use
+Figures from source papers — **only if the report should actually show paper
+figures** (many weeks don't need any; if unsure, ask once with a yes/no rather
+than extracting speculatively). When it does, and the sources are PDFs, you can
+pull the figures out automatically instead of leaving placeholders. Use
 `scripts/extract_pdf_figure.py` (`extract_figure(pdf, page, caption, out_png)`),
 which crops a figure by anchoring on its caption text. **Always open each
 produced PNG to verify the crop** — caption-anchored cropping occasionally clips
