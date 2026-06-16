@@ -18,9 +18,22 @@ description: >-
 
 Produce a new weekly report that looks and reads like the user wrote it
 themselves. The whole point is **fidelity to their existing reports**: a manager
-should not be able to tell this one was generated. That means matching two
-things — the *content structure/voice* and the *visual formatting* — and never
-inventing accomplishments that aren't supported by the materials the user gives.
+should not be able to tell this one was generated. That means matching three
+things — the *visual formatting*, the *content/writing style*, and the report's
+core nature: **it is summarizing prose.** Never invent accomplishments the
+materials don't support.
+
+A weekly report is **condensed, summary language** — not a paste of whatever the
+user sent you. Whatever they hand you (a paper, a long doc, rough notes, a code
+diff) must be **read, understood, and distilled** into a few summary sentences in
+*their* voice. So two kinds of fidelity matter, and form is only one of them:
+
+- **Form** — fonts, spacing, numbering, layout (the easy-to-measure part).
+- **Substance** — *how they summarize*: their terminology, how technical vs.
+  high-level they pitch it, sentence patterns, how they phrase a takeaway, how
+  much they compress. This is why you must understand the **content** of the past
+  reports, not just their formatting. A report that nails the fonts but reads in
+  a different voice still feels generated.
 
 ## Two paths — pick the short one when you can
 
@@ -31,9 +44,11 @@ wasn't needed. So first decide which path you're on:
 - **🟢 Fast path (the common case — repeat week).** The user already has a report
   in the exact target format — almost always **last week's `.docx`, especially
   one this skill generated**. The format is already perfect *inside that file*,
-  so **don't re-inspect or re-learn it**: just clone it, swap in this week's
-  content, save. Skip Step 1's formatting dump entirely. This is 80% of runs and
-  should feel near one-shot.
+  so **don't re-inspect or re-learn the formatting**: just clone it, swap in this
+  week's content, save. Skip Step 1's formatting *dump* (`inspect_docx.py`).
+  But still **read last week's prose** to lock in the voice and summarizing
+  style — that's just reading text, it's cheap, and it's what keeps the new week
+  sounding like the user. This is 80% of runs and should feel near one-shot.
 - **🔵 Full path (first time, or no prior report in the right format).** Study one
   historical report once to learn structure + formatting (Step 1), then clone.
 
@@ -65,9 +80,15 @@ literally, when it's a `.docx`):
 - **Section structure**: What are the recurring headings? (e.g. 本周工作 /
   本周完成 / 下周计划 / 学习与思考). In what order? Is work grouped by project, by
   day, or as a flat bullet list?
-- **Granularity & voice**: Long prose or terse bullets? Past tense, results-
-  oriented? Quantified ("完成 3 个模块", "测试覆盖率提升至 85%") or qualitative? First
-  person or impersonal? Note this — it's what makes the report read like theirs.
+- **Granularity & voice — read the actual prose, don't just scan headings.**
+  This is the part that's easy to under-do. Long prose or terse bullets? Past
+  tense, results-oriented? Quantified ("完成 3 个模块", "测试覆盖率提升至 85%") or
+  qualitative? First person or impersonal? And critically — **how do they
+  summarize?** When their past report mentions a paper or a piece of work, how
+  many sentences do they spend, at what level of abstraction, with what
+  terminology, and how do they phrase the takeaway? Internalize that summarizing
+  style; it's what you'll reproduce in Step 3. You are learning *content and
+  voice here, not only layout.*
 - **Visual formatting** (this matters because the user explicitly cares about it
   for an upper-management audience): font family, font size, bold/heading
   styles, indentation, bullet markers, numbering, and — easy to overlook —
@@ -132,10 +153,15 @@ If they say yes, draft grounded predictions in Step 3. If no, leave a clear
 Use `AskUserQuestion` if you want to offer the choice per-section (预测 / 留空 /
 我自己说) rather than all-or-nothing.
 
-## Step 3 — Summarize faithfully
+## Step 3 — Understand, then summarize in their voice
 
-Turn the raw materials into report-ready content, matching the granularity you
-observed in Step 1.
+This is the heart of the skill. A weekly report is **summarizing prose**, so for
+every input — a paper, a long doc, rough notes, a diff — the move is the same:
+**read it, understand it, then compress it into a few summary sentences that
+match the voice and granularity you saw in Step 1.** Never paste source text or a
+raw abstract; never just list what you read without distilling it. If you can't
+say what something *means* in one or two sentences, you haven't understood it
+well enough to summarize it yet — go back and read more closely.
 
 - **Work section**: Group the way their template groups (by project/by theme/
   flat). Lead with outcomes and impact, since the audience is the user's
@@ -144,9 +170,12 @@ observed in Step 1.
   their notes' casualness.
 - **Learning section** (articles read): This is a **dedicated section** — the
   user wants their reading called out separately, not blended into the work
-  items. For each article/paper, give a one-to-three line summary: what it's
-  about and the takeaway or how it connects to their work. Keep it tighter than
-  the work section unless their template does otherwise.
+  items. For each article/paper, actually read enough to **understand it**, then
+  give a one-to-three line summary in their style: what it's about, the key idea,
+  and the takeaway or how it connects to their work — pitched at the same
+  technical level and terminology their past learning sections use. Don't copy
+  the abstract; say it the way *they* would. Keep it tighter than the work
+  section unless their template does otherwise.
 - **Predicted / forward-looking sections** (下周计划, 心得思考, 下一步打算, etc.):
   Only draft these if the user opted in back in Step 2 — otherwise leave the
   `【待补充：…】` placeholder. When you do draft them, **ground every prediction in
