@@ -90,6 +90,24 @@ sections that the template says are required. If something's thin (e.g. they
 gave work but no articles, and the template has a learning section), ask rather
 than padding it with invented content.
 
+**Identify gaps and offer to predict.** Compare the template's sections against
+what the materials actually cover. Some sections are **forward-looking or
+inferential** rather than factual — e.g. 下周计划 / next-week plan, 心得思考 /
+reflections, 存在的问题 / 下一步打算 — and the user often hasn't written them out.
+Don't just leave them blank (that dumps the work back on the user), and don't
+silently invent them either. Instead, **explicitly ask whether the user wants
+you to predict/draft these from this week's work plus the patterns in their past
+reports** — make it an opt-in choice:
+
+> 历史周报里有「下周计划」「心得思考」这几节，但你这周的材料没直接提到。
+> 要不要我根据你**本周的工作内容** + **以前周报的规律**，帮你**预测/草拟**这些部分？
+> 草稿你可以直接改、让我重写，或者你自己填都行；不需要的话我就留个占位标记。
+
+If they say yes, draft grounded predictions in Step 3. If no, leave a clear
+`【待补充：下周计划】`-style placeholder so they know exactly what to fill in.
+Use `AskUserQuestion` if you want to offer the choice per-section (预测 / 留空 /
+我自己说) rather than all-or-nothing.
+
 ## Step 3 — Summarize faithfully
 
 Turn the raw materials into report-ready content, matching the granularity you
@@ -105,14 +123,21 @@ observed in Step 1.
   items. For each article/paper, give a one-to-three line summary: what it's
   about and the takeaway or how it connects to their work. Keep it tighter than
   the work section unless their template does otherwise.
-- **Plan / next week**: If the template has one, draft a reasonable plan from
-  in-progress items and obvious follow-ups, then flag to the user that they
-  should confirm it.
+- **Predicted / forward-looking sections** (下周计划, 心得思考, 下一步打算, etc.):
+  Only draft these if the user opted in back in Step 2 — otherwise leave the
+  `【待补充：…】` placeholder. When you do draft them, **ground every prediction in
+  something concrete**: in-progress items and obvious follow-ups from this week's
+  actual work, plus the recurring shape these sections take in past reports (what
+  kinds of plans/reflections the user usually writes, their granularity and
+  phrasing). Then clearly flag them as drafts for the user to confirm or rewrite.
+  This is the **one** place inference is allowed — it is forward-looking and
+  opt-in, and it does **not** loosen the rule below.
 
-The golden rule: **never fabricate accomplishments, metrics, or articles.** A
-report that overstates is worse than one that's modestly accurate, because the
-user has to stand behind it. When in doubt, summarize what's there and note the
-gap.
+The golden rule: **never fabricate past accomplishments, metrics, or articles.**
+Predicting a *plan* the user opted into is fine; inventing *work that didn't
+happen* or *numbers that weren't measured* is not. A report that overstates is
+worse than one that's modestly accurate, because the user has to stand behind
+it. When in doubt, summarize what's there and note the gap.
 
 ## Step 4 — Generate in the same format
 
