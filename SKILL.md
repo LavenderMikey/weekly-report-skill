@@ -74,12 +74,31 @@ formatting — cloning in Step 4 inherits all of it. Only do Step 1 the **first*
 time you see a user's template, or when the cloned output looks off.
 
 The user will provide one or more past reports. They may be `.docx`, `.pdf`, or
-plain text/markdown. Your goal is to extract a **template** in your head (and
-literally, when it's a `.docx`):
+plain text/markdown. Your goal is to extract a **complete template** in your head
+(and literally, when it's a `.docx`). **Learn everything the report does — not
+just the parts the user happens to mention.** If their report uses bordered
+figure-tables, centered images under a specific subsection, a particular caption
+style, a results table with certain columns, automatic numbering, a fixed title
+block — reproduce *all* of it. The user should never have to enumerate these;
+detect them yourself and generalize. Do not hard-code one report's quirks as
+universal rules either — learn the conventions *this* report follows and apply
+them consistently.
 
-- **Section structure**: What are the recurring headings? (e.g. 本周工作 /
-  本周完成 / 下周计划 / 学习与思考). In what order? Is work grouped by project, by
-  day, or as a flat bullet list?
+- **Section structure + content inventory**: What recurring sections does the
+  report have, in what order? Don't assume — read the actual headings. Common
+  building blocks a 周报 may include (learn whichever this user uses; don't force
+  ones they don't):
+  - 标题 / 抬头：姓名、日期或周次区间、所属课题组/部门（标题块的固定格式）
+  - 本周工作 / 本周完成 / 工作进展（按项目 / 按主题 / 按天 / 平铺？）
+  - 学习 / 阅读 / 文献调研：读过的论文、文章、资料（单独成节）
+  - 实验 / 结果 / 数据：常带**结果表格**或**图**
+  - 模型 / 方法 / 整体框架：常带**架构图**和**公式**
+  - 问题 / 困难 / 卡点
+  - 思考 / 心得 / 总结
+  - 下周计划 / 下一步打算
+  - 致谢 / 备注 / 其他
+  Note which are **stable** (every week) vs **occasional**, and how each is
+  typically filled (prose vs bullets, with/without figures or tables).
 - **Granularity & voice — read the actual prose, don't just scan headings.**
   This is the part that's easy to under-do. Long prose or terse bullets? Past
   tense, results-oriented? Quantified ("完成 3 个模块", "测试覆盖率提升至 85%") or
@@ -89,26 +108,46 @@ literally, when it's a `.docx`):
   terminology, and how do they phrase the takeaway? Internalize that summarizing
   style; it's what you'll reproduce in Step 3. You are learning *content and
   voice here, not only layout.*
-- **Visual formatting** (this matters because the user explicitly cares about it
-  for an upper-management audience): font family, font size, bold/heading
-  styles, indentation, bullet markers, numbering, and — easy to overlook —
-  **line spacing and paragraph spacing (space before/after) and alignment**.
-  These are usually set on the `Normal` style or document defaults rather than
-  per paragraph, so `inspect_docx.py` reports them in a dedicated "Spacing
-  defaults" section. Don't skip it: spacing is a big part of why a report
-  "looks like mine," and it's the easiest thing to get subtly wrong.
+- **Visual formatting — the full checklist** (the user cares about this for an
+  upper-management audience, and wants *all* of it matched, not just fonts).
+  Learn every dimension that applies:
+  - **Text**: font family + size, and separately the **East-Asian font** (中文字体)
+    vs Latin font; bold/heading styles; first-line and left **indentation**;
+    bullet markers; **alignment**.
+  - **Spacing**: **line spacing** and **paragraph spacing (before/after)** —
+    usually set on the `Normal` style or document defaults, not per paragraph.
+    Easy to overlook and the easiest thing to get subtly wrong; it's a big part
+    of why a report "looks like mine."
+  - **Automatic numbering**: 一、二、三 / 1、2、3 stored in `numbering.xml`,
+    **invisible in the text**. Note which sections/subsections are auto-numbered
+    and at what level.
+  - **Images / figures**: Does the report embed figures? **How** — as plain
+    centered inline images, or inside a **bordered table (image row + caption
+    row)**? At what width? **Where** — under which heading/subsection does each
+    figure sit (e.g. architecture diagram under 整体框架, results plot under
+    实验结果)? How are captions worded and numbered (图1、图2…)?
+  - **Tables**: For both figure-tables and data tables — borders or borderless?
+    Alignment (centered?)? Column count and widths? Header-row style? Reproduce
+    the same table layout, not a generic one.
+  - **Equations**: present? If so they should be **native, editable Word
+    equations**, never LaTeX source text.
+  `inspect_docx.py` now reports all of this — see below.
 
 ### Reading the different formats
 
-- **`.docx`** — Use the helper script, which dumps structure and formatting so
-  you don't have to eyeball it:
+- **`.docx`** — Use the helper script, which walks the document **in reading
+  order** and dumps everything so you don't have to eyeball it:
   ```bash
   python "<skill-dir>/scripts/inspect_docx.py" "path/to/old_report.docx"
   ```
-  It prints, per paragraph: the style name, text preview, font name, size,
-  bold/italic, alignment, and indentation — plus the document's default font.
-  This is your formatting fingerprint. If the script reports a missing
-  dependency, install it first: `pip install python-docx`.
+  It prints document defaults (fonts, spacing), then **each paragraph** (style,
+  alignment, indentation, spacing, automatic numbering, first-run font, and any
+  **inline images with their size**), then **each table in place** (figure-table
+  vs data table, dimensions, borders, alignment, column widths, cell preview) —
+  and for every image/table it notes **which heading it falls under**, so you can
+  see the placement convention to reproduce. This is your full formatting
+  fingerprint. If the script reports a missing dependency, install it first:
+  `pip install python-docx`.
 - **`.pdf`** — Read it with the Read tool (it handles PDFs natively). You'll get
   the content and rough layout but *not* exact font metrics; infer formatting
   from visual structure and ask the user if a specific detail matters.
@@ -308,9 +347,12 @@ spot-check before they send it on.
 
 ## Resources
 
-- `scripts/inspect_docx.py` — dumps a `.docx`'s per-paragraph structure and
-  formatting (style, font, size, bold, alignment, indentation) + document
-  defaults. Run it first on any `.docx` historical report.
+- `scripts/inspect_docx.py` — walks a `.docx` in reading order and dumps the full
+  fingerprint: per-paragraph structure/formatting (style, font incl. East-Asian,
+  size, bold, alignment, indentation, spacing, automatic numbering), **inline
+  images with sizes**, and **tables in place** (figure-table vs data table,
+  borders, alignment, column widths) — each annotated with the heading it falls
+  under. Run it first on any `.docx` historical report.
 - `scripts/docx_report.py` — report-agnostic building blocks for the
   clone-and-rebuild recipe: `wipe_body`, `emit`, `clone_with_text`,
   `clone_with_omath`, `add_figure_table`, `add_centered_image`,

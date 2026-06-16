@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Dump the structure and formatting fingerprint of a .docx weekly report.
+"""Dump the full structure + formatting fingerprint of a .docx weekly report.
 
 Usage:
     python inspect_docx.py path/to/report.docx
 
-Prints, per paragraph: index, style name, alignment, indentation, and the
-font (name / East-Asian name / size / bold / italic) of its first run, plus a
-text preview. Then prints document-level defaults (default font, East-Asian
-font, size). This is meant to give you a reliable picture of how the user's
-report is formatted so a generated report can match it, instead of guessing
-from a rendered view.
+Walks the document body **in reading order** so you see the real layout — where
+images sit, where tables sit, which heading each falls under — not just a flat
+paragraph list. For each paragraph it prints style, alignment, indentation,
+spacing, automatic numbering, the first run's font, any inline images (with
+size), and a text preview. For each table it prints position, dimensions,
+alignment, whether it has borders, column widths, and a small cell preview —
+and flags "figure tables" (a table used to hold an image + caption). Then it
+prints document-level defaults (fonts, spacing).
+
+The point is so a generated report can match EVERYTHING the user's report does —
+fonts, spacing, numbering, image placement/size, table layout — by learning it
+from the file, not guessing from a rendered view.
 """
 import sys
 
@@ -24,17 +30,20 @@ try:
     import docx
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
+    from docx.text.paragraph import Paragraph
+    from docx.table import Table
 except ImportError:
     sys.exit(
         "python-docx is not installed. Run:  pip install python-docx\n"
         "Then re-run this script."
     )
 
+EMU_PER_CM = 360000.0
+
 
 def emu_to_str(val):
     if val is None:
         return "-"
-    # python-docx Length is in EMU; .pt and .cm helpers exist
     try:
         return f"{val.pt:.1f}pt"
     except Exception:
@@ -48,7 +57,6 @@ def run_font(run):
     size = f.size.pt if f.size is not None else None
     bold = f.bold
     italic = f.italic
-    # East Asian font lives in rPr/rFonts@w:eastAsia and isn't exposed directly
     eastasia = None
     rpr = run._element.rPr
     if rpr is not None:
@@ -75,6 +83,27 @@ def para_numbering(p):
     nid = numid.get(qn("w:val")) if numid is not None else "?"
     lvl = ilvl.get(qn("w:val")) if ilvl is not None else "0"
     return (nid, lvl)
+
+
+def para_images(p):
+    """Return a list of (width_cm, height_cm) for every inline image in the
+    paragraph (w:drawing or legacy w:pict). Empty list if none. This is how we
+    learn whether the report uses figures, how big, and — via document-order
+    placement — where they go."""
+    out = []
+    for drawing in p._p.findall(".//" + qn("w:drawing")):
+        ext = drawing.find(".//" + qn("wp:extent"))
+        if ext is not None:
+            try:
+                cx = int(ext.get("cx")); cy = int(ext.get("cy"))
+                out.append((cx / EMU_PER_CM, cy / EMU_PER_CM))
+                continue
+            except Exception:
+                pass
+        out.append((None, None))
+    for _ in p._p.findall(".//" + qn("w:pict")):
+        out.append((None, None))
+    return out
 
 
 def para_indent(p):
@@ -110,7 +139,6 @@ def _spacing_from_ppr(ppr):
         before = sp.get(qn("w:before"))
         after = sp.get(qn("w:after"))
         if line is not None:
-            # line is in 240ths for auto/atLeast/exact; auto 240 == single
             if rule in (None, "auto"):
                 out["line"] = f"{int(line)/240:.2f}x"
             else:
@@ -125,10 +153,7 @@ def _spacing_from_ppr(ppr):
 
 
 def spacing_summary(document):
-    """Effective spacing defaults: docDefaults pPr + Normal style pPr.
-
-    Line spacing and paragraph spacing are usually inherited from here rather
-    than set per-paragraph, so matching a template's 'feel' depends on these."""
+    """Effective spacing defaults: docDefaults pPr + Normal style pPr."""
     out = {"docDefaults": None, "Normal": None}
     styles_el = document.styles.element
     dd = styles_el.find(qn("w:docDefaults"))
@@ -168,6 +193,57 @@ def doc_defaults(document):
     return out
 
 
+def table_info(t):
+    """Describe a table's layout: dimensions, alignment, borders, column widths,
+    and whether it looks like a 'figure table' (holds an image + caption)."""
+    rows, cols = len(t.rows), len(t.columns)
+    # alignment
+    align = "default"
+    jc = t._tbl.tblPr.find(qn("w:jc")) if t._tbl.tblPr is not None else None
+    if jc is not None:
+        align = jc.get(qn("w:val"))
+    # borders: explicit tblBorders, or inherited via a *Grid* style
+    has_borders = False
+    if t._tbl.tblPr is not None:
+        if t._tbl.tblPr.find(qn("w:tblBorders")) is not None:
+            has_borders = True
+    style_name = t.style.name if t.style is not None else None
+    if style_name and ("Grid" in style_name or "网格" in style_name):
+        has_borders = True
+    # column widths
+    widths = []
+    for col in t.columns:
+        w = col.width
+        widths.append(f"{w.cm:.1f}cm" if w is not None else "-")
+    # figure-table? any cell holds an image
+    has_image = bool(t._tbl.findall(".//" + qn("w:drawing"))) or \
+        bool(t._tbl.findall(".//" + qn("w:pict")))
+    # small text preview of each cell (first row or two)
+    preview_cells = []
+    for r in t.rows[:3]:
+        for c in r.cells:
+            txt = c.text.strip().replace("\n", " ")
+            if txt:
+                preview_cells.append(txt[:24])
+    return {
+        "rows": rows, "cols": cols, "align": align,
+        "borders": has_borders, "style": style_name,
+        "widths": widths, "has_image": has_image,
+        "preview": preview_cells[:6],
+    }
+
+
+def is_heading(p, num):
+    """Heuristic: a paragraph that acts as a section/subsection heading — has
+    automatic numbering, or a Heading/Title style, or is short+bold."""
+    style = p.style.name if p.style is not None else ""
+    if num is not None:
+        return True
+    if style and ("Heading" in style or "Title" in style or "标题" in style):
+        return True
+    return False
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit("Usage: python inspect_docx.py path/to/report.docx")
@@ -194,50 +270,75 @@ def main():
     print("   a typical Chinese report; set it explicitly to match the template.)")
     print()
 
-    numbered = sum(1 for p in document.paragraphs if para_numbering(p))
-    if numbered:
-        print(f"--- Automatic numbering: {numbered} paragraph(s) use numPr ---")
-        print("  Headings are likely auto-numbered (一、二、三 / 1、2、3). These")
-        print("  numbers are NOT in the text — to reproduce them, reuse the same")
-        print("  numId (cloning the template is the easiest way). See num(id=…) below.")
-        print()
+    # ---- ordered walk: paragraphs AND tables interleaved, tracking headings ----
+    body = document.element.body
+    n_imgs = 0
+    n_tbls = 0
+    cur_heading = "(none)"
+    pidx = -1
 
-    print("--- Paragraphs ---")
-    for i, p in enumerate(document.paragraphs):
-        text = p.text.strip()
-        style = p.style.name if p.style is not None else "?"
-        align = ALIGN_NAMES.get(p.alignment, str(p.alignment))
-        ind = para_indent(p)
-        if p.runs:
-            latin, eastasia, size, bold, italic = run_font(p.runs[0])
-        else:
-            latin = eastasia = size = bold = italic = None
-        preview = (text[:50] + "…") if len(text) > 50 else text
-        flags = []
-        if bold:
-            flags.append("bold")
-        if italic:
-            flags.append("italic")
-        flagstr = ",".join(flags) if flags else "-"
-        num = para_numbering(p)
-        numstr = f" num(id={num[0]},lvl={num[1]})" if num else ""
-        print(
-            f"[{i:>3}] style={style!r} align={align} "
-            f"indent(L={ind['left']},first={ind['first_line']}) "
-            f"ls={ind['line_spacing']} before={ind['before']} after={ind['after']}"
-            f"{numstr}"
-        )
-        print(
-            f"      font: latin={latin} 东亚={eastasia} "
-            f"size={size} {flagstr}"
-        )
-        print(f"      text: {preview!r}")
+    print("--- Body in reading order (paragraphs + tables + images) ---")
+    print("    (img/table lines note which heading they fall under — that's the")
+    print("     placement convention to reproduce.)\n")
 
-    # Tables, if any, are common in reports — note their presence.
-    if document.tables:
-        print(f"\n--- Tables: {len(document.tables)} found ---")
-        for ti, t in enumerate(document.tables):
-            print(f"  table[{ti}]: {len(t.rows)} rows x {len(t.columns)} cols")
+    for child in body.iterchildren():
+        if child.tag == qn("w:p"):
+            pidx += 1
+            p = Paragraph(child, document)
+            text = p.text.strip()
+            style = p.style.name if p.style is not None else "?"
+            align = ALIGN_NAMES.get(p.alignment, str(p.alignment))
+            ind = para_indent(p)
+            if p.runs:
+                latin, eastasia, size, bold, italic = run_font(p.runs[0])
+            else:
+                latin = eastasia = size = bold = italic = None
+            num = para_numbering(p)
+            if is_heading(p, num) and text:
+                cur_heading = text[:30]
+            imgs = para_images(p)
+            preview = (text[:50] + "…") if len(text) > 50 else text
+            flags = []
+            if bold:
+                flags.append("bold")
+            if italic:
+                flags.append("italic")
+            flagstr = ",".join(flags) if flags else "-"
+            numstr = f" num(id={num[0]},lvl={num[1]})" if num else ""
+            print(
+                f"[p{pidx:>3}] style={style!r} align={align} "
+                f"indent(L={ind['left']},first={ind['first_line']}) "
+                f"ls={ind['line_spacing']} before={ind['before']} "
+                f"after={ind['after']}{numstr}"
+            )
+            print(f"        font: latin={latin} 东亚={eastasia} size={size} {flagstr}")
+            if imgs:
+                n_imgs += len(imgs)
+                for w, h in imgs:
+                    dim = f"{w:.1f}×{h:.1f}cm" if w else "size?"
+                    print(f"        >>> IMAGE ({dim})  under heading: {cur_heading!r}")
+            print(f"        text: {preview!r}")
+        elif child.tag == qn("w:tbl"):
+            n_tbls += 1
+            t = Table(child, document)
+            info = table_info(t)
+            kind = "FIGURE-TABLE (image+caption)" if info["has_image"] else "data table"
+            print(
+                f"[tbl  ] {kind}: {info['rows']}r×{info['cols']}c "
+                f"align={info['align']} borders={info['borders']} "
+                f"style={info['style']!r}"
+            )
+            print(f"        col widths: {info['widths']}  under heading: {cur_heading!r}")
+            if info["preview"]:
+                print(f"        cells: {info['preview']}")
+            if info["has_image"]:
+                n_imgs += 1
+
+    print(f"\n--- Layout summary: {n_imgs} image(s), {n_tbls} table(s) ---")
+    print("  To match this report: reproduce each image/table at the same place")
+    print("  (under the same heading), same size/borders/alignment, and number")
+    print("  figures by order of appearance. Cloning the template is the reliable")
+    print("  way to inherit fonts, spacing and numbering for free.")
 
     print("\n=== end ===")
 
